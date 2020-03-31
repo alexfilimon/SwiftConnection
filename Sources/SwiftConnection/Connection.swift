@@ -40,7 +40,7 @@ public final class Connection {
     public func performRequest<T: Decodable>(urlString: String,
                                              method: Method,
                                              params: [String: String] = [:]) throws -> T {
-        guard let data = getData(urlString: urlString, method: method, params: params) else {
+        guard let data = try getData(urlString: urlString, method: method, params: params) else {
             throw ConnectionError.unknown
         }
         let responseObj = try JSONDecoder().decode(T.self, from: data)
@@ -56,7 +56,7 @@ public final class Connection {
                                method: Method,
                                params: [String: String] = [:]) throws -> [String: Any] {
         guard
-            let data = getData(urlString: urlString, method: method, params: params),
+            let data = try getData(urlString: urlString, method: method, params: params),
             let jsonDict = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
         else {
             throw ConnectionError.unknown
