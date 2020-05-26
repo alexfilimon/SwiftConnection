@@ -11,7 +11,8 @@ import Foundation
 public enum ConnectionError: LocalizedError {
     case couldntCreateUrl
     case networkError(Error)
-    case unknown
+    case networkCodeError(jsonData: [String: Any], code: Int)
+    case dataIsNil
 
     // MARK: - LocalizedError
 
@@ -21,7 +22,9 @@ public enum ConnectionError: LocalizedError {
             return "Couldnt create url"
         case .networkError(let error):
             return "Network error: \(error)"
-        case .unknown:
+        case .networkCodeError(let jsonData, let code):
+            return "Network error with code \(code), data: \(jsonData)"
+        case .dataIsNil:
             return "Unknown network error"
         }
     }

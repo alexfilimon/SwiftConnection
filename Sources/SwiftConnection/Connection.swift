@@ -13,6 +13,16 @@ import FoundationNetworking
 /// Class for connecting to the network (supports requests with accessToken)
 public final class Connection {
 
+    // MARK: - Constants
+
+    private enum Constants {
+        static let goodStatusCodes = (200...299)
+        static let defaultStatusCode = -1
+        static let authHeaderName = "Authorization"
+        static let contentTypeHeaderName = "Content-Type"
+        static let contentTypeHeaderJsonValue = "application/json"
+    }
+
     // MARK: - Nested Types
 
     public enum Method: String {
@@ -24,13 +34,17 @@ public final class Connection {
     // MARK: - Private Properties
 
     private let tokenProvider: TokenProvider?
+    private let shouldLog: Bool
 
     // MARK: - Initializaion
 
     /// Base initialization
-    /// - Parameter accessToken: access token for auth
-    public init(tokenProvider: TokenProvider? = nil) {
+    /// - Parameter tokenProvider: provider for token
+    /// - Parameter shouldLog: if need log to console
+    public init(tokenProvider: TokenProvider? = nil,
+                shouldLog: Bool = false) {
         self.tokenProvider = tokenProvider
+        self.shouldLog = shouldLog
     }
 
     // MARK: - Methods
@@ -44,7 +58,7 @@ public final class Connection {
                                              method: Method,
                                              params: [String: String] = [:]) throws -> T {
         guard let data = try getData(urlString: urlString, method: method, params: params) else {
-            throw ConnectionError.unknown
+            throw ConnectionError.dataIsNil
         }
         let responseObj = try JSONDecoder().decode(T.self, from: data)
         return responseObj
@@ -62,7 +76,7 @@ public final class Connection {
             let data = try getData(urlString: urlString, method: method, params: params),
             let jsonDict = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
         else {
-            throw ConnectionError.unknown
+            throw ConnectionError.dataIsNil
         }
         return jsonDict
     }
@@ -91,36 +105,106 @@ private extension Connection {
 
         // add auth header
         var request = URLRequest(url: urlComponents.url!)
+        var usedToken: String?
         if let tokenProvider = tokenProvider {
             let token = try tokenProvider.getToken()
-            request.setValue("\(token.tokenType) \(token.accessToken)", forHTTPHeaderField: "Authorization")
+            let tokenStringValue = "\(token.tokenType) \(token.accessToken)"
+            request.setValue(
+                tokenStringValue,
+                forHTTPHeaderField: Constants.authHeaderName
+            )
+            usedToken = tokenStringValue
         }
         request.httpMethod = method.rawValue
+
+        // logging
+        logIfNeeded(string: """
+
+        ┌--------------------------┐
+        |     Network request      |
+        ├--------------------------┤
+        | URL: \(urlString)
+        | Token: \(usedToken ?? "<none>")
+        | Method: \(method.rawValue)
+        | Params: \(params)
+        └--------------------------┘
+
+        """)
 
         // add params for post
         if method == .post || method == .put {
           request.httpBody = try? JSONEncoder().encode(params)
-          request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(
+                Constants.contentTypeHeaderJsonValue,
+                forHTTPHeaderField: Constants.contentTypeHeaderName
+            )
         }
 
         var responseData: Data?
         var responseError: Error?
+        var responseCode = Constants.defaultStatusCode
 
         let sm = DispatchSemaphore(value: 0)
         let session = URLSession(configuration: URLSessionConfiguration.default)
         let task: URLSessionDataTask = session.dataTask(with: request) { (data, response, error) -> Void in
             responseData = data
             responseError = error
+            if let httpResponse = response as? HTTPURLResponse {
+                responseCode = httpResponse.statusCode
+            }
             sm.signal()
         }
         task.resume()
         _ = sm.wait(timeout: .distantFuture)
 
         if let error = responseError {
+            logIfNeeded(string: """
+
+            ┌--------------------------┐
+            |      Network error       |
+            ├--------------------------┤
+            | \(error)
+            └--------------------------┘
+
+            """)
             throw ConnectionError.networkError(error)
         }
 
+        logIfNeeded(string: """
+
+        ┌--------------------------┐
+        |     Network response     |
+        ├--------------------------┤
+        | Code: \(responseCode)
+        | Data: \(String(data: responseData ?? Data(), encoding: .utf8) ?? "<no data>")
+        └--------------------------┘
+
+        """)
+
+        guard Constants.goodStatusCodes.contains(responseCode) else {
+            let jsonDict = try? JSONSerialization.jsonObject(with: responseData ?? Data(),
+                                                             options: []) as? [String: Any]
+
+            logIfNeeded(string: """
+
+            ┌--------------------------┐
+            |      Network error       |
+            ├--------------------------┤
+            | Code: \(responseCode)
+            | Payload: \(jsonDict ?? [:])
+            └--------------------------┘
+
+            """)
+
+            throw ConnectionError.networkCodeError(jsonData: jsonDict ?? [:], code: responseCode)
+        }
+
         return responseData
+    }
+
+    func logIfNeeded(string: String) {
+        guard shouldLog else { return }
+        print("\(Date()) [SwiftConnection]: \(string)")
     }
 
 }

@@ -2,11 +2,16 @@
 
 Library for making network requests.
 
-Connection could be initialized with `TokenProvider`.
+## Review
 
-`TokenProvider` - protocol for entities, that could return valid access token. It could be, for example, [GoogleTokenProvider](https://github.com/alexfilimon/GoogleTokenProvider).
+### Features
 
-`Connection` have two public methods:
+- `get`, `post`, `put` requests only
+- only JSON payload in body for `put` and `post`
+- `URLSession` as a core 
+- supports Linux 
+
+### Public methods
 
 - `performRequest`, that return codable entity
 - `performRequest`, that return `[String: Any]`
@@ -14,43 +19,26 @@ Connection could be initialized with `TokenProvider`.
 ## Example
 
 ```swift
-struct FileEntry: Codable {
-    let id: String
-    let name: String
-    let mimeType: String
-}
-struct DriveResponseEntry: Codable {
-    let nextPageToken: String?
-    let files: [FileEntry]
+struct IPInfoEntry: Codable {
+    let status: String
+    let message: String
+    let country: String
 }
 
 let connection = Connection()
 let result: DriveResponseEntry = try  connection.performRequest(
-    urlString: "https://www.googleapis.com/drive/v3/files",
+    urlString: "http://ip-api.com/json/24.48.0.1",
     method: .get,
-    params: ["q": "'root' in parents"]
+    params: ["fields": "status,message,country"]
 )
 ```
+
+## Auth
 
 In real request, as a rule, you need to add authentication params to request. You can make it by passing `TokenProvider` in `Connection` initializer.
 
-For example (if you are working with google):
+`TokenProvider` - protocol for entities, that could return valid access token. You can create your own TokenProvider.
 
-1. Install `GoogleTokenProvider` via SPM
+### Supported TokenProviders
 
-```swift
-.package(url: "https://github.com/alexfilimon/GoogleTokenProvider"),
-```
-
-2. Pass GoogleTokenProvider in `Connection` initialization 
-
-```swift
-import GoogleTokenProvider
-
-let googleTokenProvider = try GoogleTokenProvider(
-    scopes: ["https://www.googleapis.com/auth/drive"],
-    credentialFilePath: "path_to_cred_path"
-)
-let connection = Connection(tokenProvider: googleTokenProvider)
-// ...
-```
+- [GoogleTokenProvider](https://github.com/alexfilimon/GoogleTokenProvider)
